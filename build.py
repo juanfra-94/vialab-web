@@ -104,10 +104,27 @@ def page_file(p):
     return OUT + (p + ".html" if p else "/index.html")
 
 
-def process(text, p, outfile):
+COUNTRY_JS = """(function(){var K='vl_country',P=location.pathname,MX=P==='/mx'||P.indexOf('/mx/')===0,H=document.documentElement;
+function show(){H.style.visibility='';}
+function go(c){if((c==='MX')===MX)return show();var p=MX?(P.slice(3)||'/'):('/mx'+(P==='/'?'':P));location.replace(p+location.search+location.hash);}
+function save(c){try{localStorage.setItem(K,c)}catch(e){}}
+window.vlSetCountry=function(c){save(c);go(c);};
+var c=null;try{c=localStorage.getItem(K)}catch(e){}
+if(c){go(c);return;}
+H.style.visibility='hidden';var done=false;
+function fin(x){if(done)return;done=true;save(x);go(x);}
+setTimeout(function(){fin(MX?'MX':'AR')},2500);
+fetch('https://www.cloudflare.com/cdn-cgi/trace').then(function(r){return r.text()}).then(function(t){var m=t.match(/loc=([A-Z]{2})/);fin(m&&m[1]==='MX'?'MX':'AR')}).catch(function(){fetch('https://get.geojs.io/v1/ip/country.json').then(function(r){return r.json()}).then(function(j){fin(j.country==='MX'?'MX':'AR')}).catch(function(){fin(MX?'MX':'AR')})});
+})();"""
+SELECTOR_JS = """<script>(function(){var sub=HTMLFormElement.prototype.submit;function pick(f){var i=f.querySelector('[name=country_code]');return i&&i.value;}
+HTMLFormElement.prototype.submit=function(){if(this.classList.contains('localization-form')){var c=pick(this);if(c){window.vlSetCountry(c==='MX'?'MX':'AR');return;}}return sub.apply(this,arguments);};
+document.addEventListener('submit',function(e){var f=e.target;if(f&&f.classList&&f.classList.contains('localization-form')){e.preventDefault();var c=pick(f);if(c)window.vlSetCountry(c==='MX'?'MX':'AR');}},true);})();</script>"""
+
+
+def process(text, p, outfile, prefix=""):
     soup = BeautifulSoup(text, "html.parser")
     shim = soup.new_tag("script")
-    shim.string = "window.Shopify=window.Shopify||{designMode:false,locale:'es',country:'AR',currency:{active:'ARS',rate:'1.0'},routes:{root:'/'}};"
+    shim.string = COUNTRY_JS + "window.Shopify=window.Shopify||{designMode:false,locale:'es',country:'%s',currency:{active:'%s',rate:'1.0'},routes:{root:'/'}};" % (("MX", "MXN") if prefix else ("AR", "ARS"))
     if soup.head:
         soup.head.insert(0, shim)
     for s in soup.find_all("script"):
@@ -155,8 +172,8 @@ def process(text, p, outfile):
         if st.string and "url(" in st.string:
             st.string = re.sub(r"url\((['\"]?)([^)'\"]+)\1\)", lambda m: "url(%s)" % (local(m.group(2), p) or m.group(2)), st.string)
     # Shopify-only partes: selector de país, "Powered by Shopify", carrito
-    for f in soup.select("form.localization-form, localization-form"):
-        f.decompose()
+    for f in soup.select("form.localization-form"):
+        f["action"] = "#"
     for a in soup.find_all("a", href=True):
         h = a["href"]
         if "shopify.com" in h and "poweredby" in h:
@@ -165,7 +182,9 @@ def process(text, p, outfile):
         if "account.vialabacademy.com" in h or h.startswith("/account"):
             a["href"] = CAMPUS
         elif h.startswith(BASE):
-            a["href"] = h[len(BASE):] or "/"
+            a["href"] = h = h[len(BASE):] or "/"
+        if prefix and a.get("href", "").startswith("/") and not a["href"].startswith(("/a/", "//", prefix + "/")) and a["href"] != prefix:
+            a["href"] = prefix + a["href"]
     for f in soup.select('form[action="/search"]'):
         f["action"] = "/collections/all"
     for t in soup.select('a[href="/cart"], a[href^="/cart"], #cart-icon-bubble, cart-drawer, cart-notification'):
@@ -173,7 +192,9 @@ def process(text, p, outfile):
     for f in soup.select('form[action^="/contact"]'):
         f["data-vl-contact"] = "1"
         f["action"] = "#"
-    html = str(soup)
+    html = str(soup).replace("</body>", SELECTOR_JS + "</body>")
+    # Inscripción: la transferencia de México (SPEI) llega al panel como tal
+    html = html.replace('var pay = d.get("pay") === "tr" ? "transferencia" : "mercadopago";', 'var pay = d.get("pay") === "tr" ? "transferencia" : d.get("pay") === "mx" ? "transferencia mx (SPEI)" : "mercadopago";')
     # Formulario de contacto: se manda por WhatsApp (no hay servidor de Shopify)
     if 'data-vl-contact' in html:
         html = html.replace("</body>", """<script>document.querySelectorAll('[data-vl-contact]').forEach(function(f){f.addEventListener('submit',function(e){e.preventDefault();var d=new FormData(f),t=[];d.forEach(function(v,k){if(/contact\\[/.test(k)&&v)t.push(k.replace(/contact\\[|\\]/g,'')+': '+v);});window.open('https://wa.me/5493516217628?text='+encodeURIComponent('Hola Vialab Academy!\\n'+t.join('\\n')),'_blank','noopener');});});</script></body>""")
@@ -182,15 +203,21 @@ def process(text, p, outfile):
     print("page", p)
 
 
-for p in PAGES:
-    r = S.get(BASE + p, timeout=60)
-    if r.status_code != 200:
-        print("skip", r.status_code, p)
-        continue
-    process(r.text, p, page_file(p))
-r = S.get(BASE + "/pagina-que-no-existe-vialab", timeout=60)
-if r.text:
-    process(r.text, "/404", OUT + "/404.html")
+def set_country(c):
+    S.post(BASE + "/localization", data={"form_type": "localization", "utf8": "\u2713", "_method": "put", "return_to": "/", "country_code": c}, timeout=60)
+
+
+for country, prefix in (("MX", "/mx"), ("AR", "")):
+    set_country(country)
+    for p in PAGES:
+        r = S.get(BASE + p, timeout=60)
+        if r.status_code != 200:
+            print("skip", r.status_code, p)
+            continue
+        process(r.text, p, OUT + prefix + page_file(p)[len(OUT):] if prefix else page_file(p), prefix)
+    r = S.get(BASE + "/pagina-que-no-existe-vialab", timeout=60)
+    if r.text:
+        process(r.text, prefix + "/404", OUT + prefix + "/404.html", prefix)
 
 done = set()
 while True:
@@ -209,6 +236,7 @@ RewriteCond %{HTTPS} off
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTP_HOST} ^www\\.(.+)$ [NC]
 RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
+RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.+)/$ /$1 [L,R=301]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME}.html -f
