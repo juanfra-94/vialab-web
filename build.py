@@ -174,12 +174,15 @@ def process(text, p, outfile, prefix=""):
     # Shopify-only partes: selector de país, "Powered by Shopify", carrito
     for f in soup.select("form.localization-form"):
         f["action"] = "#"
+        for t in f.find_all(string=True):
+            if "ARS" in t and ("México" in t or (prefix and "Argentina" not in t)):
+                t.replace_with(t.replace("ARS", "MXN"))
     for a in soup.find_all("a", href=True):
         h = a["href"]
         if "shopify.com" in h and "poweredby" in h:
             a.decompose()
             continue
-        if "account.vialabacademy.com" in h or h.startswith("/account"):
+        if "account.vialabacademy.com" in h or "aula.vialabacademy.com" in h or h.startswith("/account"):
             a["href"] = CAMPUS
         elif h.startswith(BASE):
             a["href"] = h = h[len(BASE):] or "/"
@@ -251,6 +254,7 @@ ExpiresByType text/css "access plus 7 days"
 ExpiresByType application/javascript "access plus 7 days"
 </IfModule>
 """)
+open(OUT + "/CNAME", "w").write("nuevo.vialabacademy.com\n")
 open(OUT + "/robots.txt", "w").write("User-agent: *\nAllow: /\nSitemap: https://vialabacademy.com/sitemap.xml\n")
 urls = "".join("<url><loc>%s%s</loc></url>" % (BASE, p) for p in PAGES if os.path.exists(page_file(p)))
 open(OUT + "/sitemap.xml", "w").write('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>' % urls)
