@@ -1,0 +1,2 @@
+(function(){const scrollTop=()=>{const btnScrollTop=document.querySelector(".scroll-top");window.addEventListener("scroll",function(){btnScrollTop&&(scrollY>document.documentElement.clientHeight?btnScrollTop.classList.add("show"):btnScrollTop.classList.remove("show"))}),btnScrollTop.onclick=()=>{window.scrollTo({top:0,behavior:"smooth"})}};scrollTop(),document.addEventListener("shopify:section:load",function(){scrollTop()})})();
+//# sourceMappingURL=/cdn/shop/t/10/assets/scroll-top.js.map?v=170322597206088998301793994016

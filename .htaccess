@@ -1,0 +1,17 @@
+DirectoryIndex index.html
+Options -MultiViews
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.+)/$ /$1 [L,R=301]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.+)$ $1.html [L]
+RewriteRule ^search$ /collections/all [L,R=302]
+RewriteRule ^(cart|account|checkout)(/.*)?$ https://campus.vialabacademy.com/ [L,R=302]
+ErrorDocument 404 /404.html
+<IfModule mod_expires.c>
+ExpiresActive On
+ExpiresByType image/* "access plus 30 days"
+ExpiresByType text/css "access plus 7 days"
+ExpiresByType application/javascript "access plus 7 days"
+</IfModule>
