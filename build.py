@@ -235,10 +235,6 @@ print("assets", len(done))
 open(OUT + "/.htaccess", "w").write("""DirectoryIndex index.html
 Options -MultiViews
 RewriteEngine On
-RewriteCond %{HTTPS} off
-RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-RewriteCond %{HTTP_HOST} ^www\\.(.+)$ [NC]
-RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.+)/$ /$1 [L,R=301]
 RewriteCond %{REQUEST_FILENAME} !-f
